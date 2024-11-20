@@ -146,15 +146,19 @@ function spawnCache(lat: number, lng: number) {
   };
 
   caches.push(cache);
+  saveGameState();
 
   rect.bindPopup(() => {
     const popupDiv = document.createElement("div");
+    const coinListHTML = cache.coinIds.map((coinId) => {
+      return `<a href="#" class="coin-link" data-coin-id="${coinId}" data-cache-lat="${cache.lat}" data-cache-lng="${cache.lng}">${coinId}</a>`;
+    }).join(", ");
     popupDiv.innerHTML = `
       <div>Cache at "${i}:${j}". Value: <span id="value">${cache.coinValue}</span></div>
-      <div>Coins: ${cache.coinIds.join(", ")}</div>
+      <div>Coins: ${coinListHTML}</div>
       <button id="collect">Collect</button>
       <button id="deposit">Deposit</button>`;
-
+  
       popupDiv.querySelector<HTMLButtonElement>("#collect")!.addEventListener("click", () => {
         if (cache.coinValue > 0) {
           cache.coinValue--;
@@ -163,7 +167,7 @@ function spawnCache(lat: number, lng: number) {
           popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = cache.coinValue.toString();
       
           // Save game state after collecting coin
-          saveGameState();
+          saveGameState(); // Ensuring the game state is saved after collecting coin
         }
       });
 
@@ -175,13 +179,24 @@ function spawnCache(lat: number, lng: number) {
           popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = cache.coinValue.toString();
       
           // Save game state after depositing coin
-          saveGameState();
+          saveGameState(); // Ensuring the game state is saved after depositing coin
         }
       });
 
+    const coinLinks = popupDiv.querySelectorAll(".coin-link");
+  coinLinks.forEach(link => {
+    link.addEventListener("click", (event) => {
+      const lat = parseFloat((event.target as HTMLElement).getAttribute("data-cache-lat")!);
+      const lng = parseFloat((event.target as HTMLElement).getAttribute("data-cache-lng")!);
+      map.setView([lat, lng], GAMEPLAY_ZOOM_LEVEL);
+    });
+  });
+
     return popupDiv;
   });
+  
 }
+
 
 function updateCaches() {
   clearOutOfViewCaches();
@@ -206,19 +221,22 @@ function movePlayer(latOffset: number, lngOffset: number) {
   playerMarker.setLatLng([newLat, newLng]);
   map.setView([newLat, newLng]);
 
-  updateCaches();
-
+  updateCaches(); // Update the caches for the new location
+  
   // Save game state after movement
-  saveGameState();
+  saveGameState(); // Ensuring the game state is saved here
 }
-
 
 function movePlayerToGeolocation(lat: number, lng: number) {
   playerMarker.setLatLng([lat, lng]);
   map.setView([lat, lng]);
 
-  updateCaches();
+  updateCaches(); // Update the caches when moving based on geolocation
+
+  // Save game state after geolocation update
+  saveGameState(); // Ensuring the game state is saved here
 }
+
 
 let geolocationWatchId: number | null = null;
 
@@ -267,11 +285,20 @@ function saveGameState() {
     playerPosition: { lat: playerPosition.lat, lng: playerPosition.lng },
     playerPoints: playerPoints,
     movementHistory: movementHistory,
+    caches: caches.map((cache) => ({
+      id: cache.id,
+      lat: cache.lat,
+      lng: cache.lng,
+      coinValue: cache.coinValue,
+      coinIds: cache.coinIds,
+      isVisible: cache.isVisible,
+    })),
   };
 
   // Save the game state to localStorage
   localStorage.setItem("gameState", JSON.stringify(gameState));
 }
+
 
 function loadGameState() {
   const savedState = localStorage.getItem("gameState");
@@ -288,8 +315,38 @@ function loadGameState() {
     statusPanel.innerHTML = `${playerPoints} points accumulated`;
 
     // Restore movement history and polyline
-    movementHistory.push(...gameState.movementHistory);
+    movementHistory.length = 0;  // Clear old movement history
+    movementHistory.push(...gameState.movementHistory);  // Load saved history
     movementPolyline.setLatLngs(movementHistory);
+
+    // Clear all current caches from map before loading
+    caches.forEach(cache => {
+      if (cache.isVisible) {
+        map.removeLayer(cache.rect); // Remove old cache rectangles
+        cache.isVisible = false;
+      }
+    });
+
+    // Restore caches
+    gameState.caches.forEach((savedCache: any) => {
+      const cache = caches.find(c => c.id === savedCache.id);
+      if (cache) {
+        // Update the cache properties
+        cache.coinValue = savedCache.coinValue;
+        cache.coinIds = savedCache.coinIds;
+        cache.isVisible = savedCache.isVisible;
+
+        if (cache.isVisible) {
+          const bounds = leaflet.latLngBounds([[cache.lat, cache.lng], [cache.lat + TILE_DEGREES, cache.lng + TILE_DEGREES]]);
+          const rect = leaflet.rectangle(bounds);
+          rect.addTo(map);
+          cache.rect = rect; // Attach the rectangle to the cache
+        }
+      } else {
+        // If the cache doesn't exist, create a new one
+        spawnCache(savedCache.lat, savedCache.lng);
+      }
+    });
   } else {
     // If no saved state, start fresh
     statusPanel.innerHTML = "No points yet...";
@@ -298,8 +355,44 @@ function loadGameState() {
 
 
 
+function resetGame() {
+  const userConfirmed = window.confirm("Are you sure you want to erase your game state and reset the game?");
+  
+  if (userConfirmed) {
+    // Reset game components to initial state
+    playerPoints = 0;
+    statusPanel.innerHTML = `${playerPoints} points accumulated`;
+    movementHistory.length = 0;
+    movementPolyline.setLatLngs([]);
+
+    caches.forEach((cache) => {
+      if (cache.isVisible) {
+        map.removeLayer(cache.rect);
+        cache.isVisible = false;
+      }
+    });
+
+    // Clear game state in localStorage
+    localStorage.removeItem("gameState");
+
+    // Optionally reset player to starting position and generate new caches
+    playerMarker.setLatLng(OAKES_CLASSROOM);
+    map.setView(OAKES_CLASSROOM);
+    updateCaches();
+
+    // Optionally save the initial state after reset
+    saveGameState(); // Save after reset
+  }
+}
+
+
+
+
+
+
 
 document.getElementById("north")!.addEventListener("click", () => movePlayer(MOVE_DISTANCE, 0));
 document.getElementById("south")!.addEventListener("click", () => movePlayer(-MOVE_DISTANCE, 0));
 document.getElementById("west")!.addEventListener("click", () => movePlayer(0, -MOVE_DISTANCE));
 document.getElementById("east")!.addEventListener("click", () => movePlayer(0, MOVE_DISTANCE));
+document.getElementById("reset")!.addEventListener("click", resetGame);
