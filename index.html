@@ -16,6 +16,9 @@
             <button id="west" title="west">⬅️</button>
             <button id="east" title="east">➡️</button>
             <button id="reset" title="reset">🚮</button>
+            <button id="saveGame" title="save game">💾 Save Game</button>
+            <button id="loadGame" title="load game">📂 Load Game</button>
+            <button id="newGame" title="new game">🆕 New Game</button>
         </div>
 
         <!-- Status Panel -->
@@ -25,6 +28,38 @@
         <div id="map"></div>
     </div>
 
+    <!-- Add Leaflet.js for map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+    <!-- Include the game logic -->
     <script type="module" src="/src/main.ts"></script>
+
+    <script>
+        // Event listeners for Save, Load, and New Game buttons
+        const saveButton = document.getElementById("saveGame");
+        const loadButton = document.getElementById("loadGame");
+        const newGameButton = document.getElementById("newGame");
+
+        saveButton.addEventListener("click", () => {
+            saveGameState();  // Save game state when the button is pressed
+            alert("Game saved!");  // Notify the player that the game has been saved
+        });
+
+        loadButton.addEventListener("click", () => {
+            const shouldLoad = confirm("Do you want to load the saved game?");
+            if (shouldLoad) {
+                loadGameState();
+            }
+        });
+
+        newGameButton.addEventListener("click", () => {
+            const shouldStartNew = confirm("Do you want to start a new game?");
+            if (shouldStartNew) {
+                localStorage.removeItem("gameState");  // Clear saved state
+                location.reload();  // Reload the page for a fresh start
+            }
+        });
+    </script>
 </body>
 </html>
