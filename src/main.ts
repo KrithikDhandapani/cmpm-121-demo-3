@@ -183,6 +183,24 @@ function spawnCache(lat: number, lng: number) {
         }
       });
 
+      window.addEventListener('load', () => {
+        const savedState = localStorage.getItem("gameState");
+        
+        if (savedState) {
+          const loadChoice = window.confirm("Do you want to load your saved game?");
+          
+          if (loadChoice) {
+            loadGameState(); // Load the saved state if the player agrees
+          } else {
+            // Optionally, start a new game if no saved game is loaded
+            startNewGame();
+          }
+        } else {
+          // No saved game, start a new one
+          startNewGame();
+        }
+      });
+
     const coinLinks = popupDiv.querySelectorAll(".coin-link");
   coinLinks.forEach(link => {
     link.addEventListener("click", (event) => {
@@ -280,28 +298,31 @@ function clearOutOfViewCaches() {
 }
 
 function saveGameState() {
-  const playerPosition = playerMarker.getLatLng();
+  // Example of game state you might want to save
   const gameState = {
-    playerPosition: { lat: playerPosition.lat, lng: playerPosition.lng },
     playerPoints: playerPoints,
-    movementHistory: movementHistory,
-    caches: caches.map((cache) => ({
-      id: cache.id,
+    playerPosition: {
+      lat: playerMarker.getLatLng().lat,
+      lng: playerMarker.getLatLng().lng,
+    },
+    caches: caches.map(cache => ({
       lat: cache.lat,
       lng: cache.lng,
-      coinValue: cache.coinValue,
-      coinIds: cache.coinIds,
-      isVisible: cache.isVisible,
+      coinValue: cache.coinValue
     })),
+    // Add any other necessary game data here (movement history, etc.)
   };
 
-  // Save the game state to localStorage
+  // Save game state to localStorage
   localStorage.setItem("gameState", JSON.stringify(gameState));
 }
 
 
+
+
 function loadGameState() {
   const savedState = localStorage.getItem("gameState");
+  
   if (savedState) {
     const gameState = JSON.parse(savedState);
 
@@ -319,10 +340,10 @@ function loadGameState() {
     movementHistory.push(...gameState.movementHistory);  // Load saved history
     movementPolyline.setLatLngs(movementHistory);
 
-    // Clear all current caches from map before loading
+    // Clear all current caches from map before loading new ones
     caches.forEach(cache => {
       if (cache.isVisible) {
-        map.removeLayer(cache.rect); // Remove old cache rectangles
+        map.removeLayer(cache.rect); // Remove old cache rectangles from the map
         cache.isVisible = false;
       }
     });
@@ -330,28 +351,39 @@ function loadGameState() {
     // Restore caches
     gameState.caches.forEach((savedCache: any) => {
       const cache = caches.find(c => c.id === savedCache.id);
+
       if (cache) {
-        // Update the cache properties
+        // Update existing cache properties from saved state
         cache.coinValue = savedCache.coinValue;
-        cache.coinIds = savedCache.coinIds;
+        cache.coinIds = savedCache.coinIds || [];  // Ensure coinIds exist
         cache.isVisible = savedCache.isVisible;
 
         if (cache.isVisible) {
-          const bounds = leaflet.latLngBounds([[cache.lat, cache.lng], [cache.lat + TILE_DEGREES, cache.lng + TILE_DEGREES]]);
+          // Re-create the cache rectangle on the map if it's visible
+          const bounds = leaflet.latLngBounds([
+            [cache.lat, cache.lng],
+            [cache.lat + TILE_DEGREES, cache.lng + TILE_DEGREES]
+          ]);
           const rect = leaflet.rectangle(bounds);
           rect.addTo(map);
-          cache.rect = rect; // Attach the rectangle to the cache
+          cache.rect = rect; // Attach the rectangle to the cache object
         }
       } else {
-        // If the cache doesn't exist, create a new one
+        // If the cache does not exist in the current list, create a new cache
         spawnCache(savedCache.lat, savedCache.lng);
       }
     });
+
+    // Optionally, restore other game data (e.g., inventory, settings)
+    // For example, if there are more game state elements you want to save/load:
+    // inventory = gameState.inventory;
+
   } else {
-    // If no saved state, start fresh
+    // If no saved state is found, show the initial status
     statusPanel.innerHTML = "No points yet...";
   }
 }
+
 
 
 
@@ -385,6 +417,28 @@ function resetGame() {
   }
 }
 
+function startNewGame() {
+  const userConfirmed = window.confirm("Are you sure you want to start a new game? All progress will be lost.");
+  
+  if (userConfirmed) {
+    // Reset the game state
+    playerPoints = 0;
+    statusPanel.innerHTML = `${playerPoints} points accumulated`;
+    caches.length = 0;
+    movementHistory.length = 0;
+    movementPolyline.setLatLngs([]);
+    map.setView(OAKES_CLASSROOM); // Reset player position
+
+    // Clear saved game state
+    localStorage.removeItem("gameState");
+
+    // Optionally, reinitialize caches or other game components
+    updateCaches();
+    
+    alert("New game started!");
+  }
+}
+
 
 
 
@@ -396,3 +450,7 @@ document.getElementById("south")!.addEventListener("click", () => movePlayer(-MO
 document.getElementById("west")!.addEventListener("click", () => movePlayer(0, -MOVE_DISTANCE));
 document.getElementById("east")!.addEventListener("click", () => movePlayer(0, MOVE_DISTANCE));
 document.getElementById("reset")!.addEventListener("click", resetGame);
+document.getElementById("save-game")!.addEventListener("click", saveGameState);
+document.getElementById("load-game")!.addEventListener("click", loadGameState);
+document.getElementById("new-game")!.addEventListener("click", startNewGame);
+
